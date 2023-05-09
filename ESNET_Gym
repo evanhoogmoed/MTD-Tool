@@ -1,0 +1,156 @@
+import gym
+from gym import spaces 
+import numpy as np
+from StaticCaseEnv2 import NetworkGraph
+from stable_baselines3.common.env_checker import check_env
+import logging
+import os
+from stable_baselines3 import PPO
+from stable_baselines3 import A2C
+import matplotlib.pyplot as plt
+
+class EdgeEnv(gym.Env):
+    def __init__(self):
+        super(EdgeEnv, self).__init__()
+        
+        self.net = NetworkGraph()
+        self.num_change_edges = 15
+        self.num_of_edges = self.net.net.number_of_edges()
+        self.simTime = 20
+
+        self.action_space = spaces.Discrete(self.num_change_edges) 
+        #sample action
+        #print("Sample action: ",self.action_space.sample())
+
+        self.observation_space = spaces.Box(low=0.0, high=14.0,shape=(self.num_of_edges,3),dtype=np.float32)
+
+       
+        #print sample observation
+        #print("Sample observation: ",self.observation_space.sample())
+
+        self.episode_over = False
+        self.info = {}
+        self.take_action(self.action_space.sample())
+ 
+    def step(self,action):
+
+        if self.simTime <= 0:
+            self.episode_over = True
+        else:
+            self.episode_over = False
+ 
+        prev_bc_links = self.net.get_state(self.net.net)
+
+        network_copy = self.net.net.copy()
+        new_net = self.net.randomize_link_weights(self.num_change_edges,network_copy)
+
+        curr_bc_links = self.net.get_state(new_net)
+
+        reward = 0
+
+        #get top 5 src,dst pairs from prev_bc_links based on bc value
+        prev_top_links = sorted(prev_bc_links, key=lambda x: x[2], reverse=True)[:5]
+        curr_top_links = sorted(curr_bc_links, key=lambda x: x[2], reverse=True)[:5]
+
+        #if the src,dst pair is in the top 5 of both lists, then reward -=10
+        for link in prev_top_links:
+            if link in curr_top_links:
+                reward -= 10
+            else:
+                reward += 5
+        
+        #get the max and min bc values from prev_bc_links and take the difference
+        prev_max_bc = max(prev_bc_links, key=lambda x: x[2])
+        prev_min_bc = min(prev_bc_links, key=lambda x: x[2])
+        prev_bc_diff = prev_max_bc[2] - prev_min_bc[2]
+
+        #do the same for curr_bc_links
+        curr_max_bc = max(curr_bc_links, key=lambda x: x[2])
+        curr_min_bc = min(curr_bc_links, key=lambda x: x[2])
+        curr_bc_diff = curr_max_bc[2] - curr_min_bc[2]
+
+        #if the difference between the max and min bc values decreased, reward += 5
+        if curr_bc_diff < prev_bc_diff:
+            reward += 5
+        else:
+            reward -= 5
+
+        self.simTime -= 1
+
+        info = {'delay': self.net.delay(self.net.net)}
+        return np.array(curr_bc_links,dtype=np.float32), reward, self.episode_over,info
+
+    def take_action(self,action):
+        #prev_obs = self.net.get_state(self.num_change_edges,self.net.net)
+        new_net = self.net.randomize_link_weights(action,self.net.net)
+        observation = self.net.get_state(new_net)
+
+        #print("Prev_obs",prev_obs)
+        #print("Curr obs",observation)
+        return observation
+
+    def reset(self):
+        self.done = False
+        self.net.init_graph()
+        self.simTime = 20
+        observation = np.array(self.net.get_state(self.net.net),dtype=np.float32)
+        
+        
+
+        #print(observation)
+        return observation
+
+    def render(self):
+        #no render currently implemented
+        pass
+
+def GenBoxPlot(org_delay,rand_delay,graphname):
+    fig = plt.figure()
+    fig.suptitle('Packet Delay Distribution')
+    plt.boxplot([org_delay,rand_delay])
+    plt.xticks([1,2],['org',graphname])
+    plt.ylim([0,30])
+    plt.grid()
+    plt.show()
+
+def main():
+    edge_env = EdgeEnv()
+    edge_env.step(edge_env.action_space.sample())
+    #call env reset
+    #edge_env.reset()
+    #check_env(edge_env, warn=True)
+    
+    #get orginal delay
+    #org_delay = edge_env.net.delay(edge_env.net.nodeSets,edge_env.net.net)
+    episodes = 5
+    #delay = []
+    """for episode in range(1, episodes+1):
+        state = edge_env.reset()
+        done = False
+        score = 0
+
+        while not done:
+            action = edge_env.action_space.sample()
+            n_state, reward, done, info = edge_env.step(action)
+
+            score += reward
+        print('Episode:{} Score:{}'.format(episode, score))"""
+        
+
+
+   
+
+    log_path = os.path.join('Training', 'Logs')
+    #model = PPO("MlpPolicy", edge_env,n_epochs=10, learning_rate= .003, verbose=1, tensorboard_log=log_path,ent_coef=0.05)
+    #edge_env = gym.wrappers.FlattenObservation(edge_env)
+    model = A2C("MlpPolicy", edge_env, verbose=1, tensorboard_log=log_path, device = 'cpu')
+    model.learn(total_timesteps=500000)
+    model.save("a2c_bc_diff_edge15_500k")
+    
+
+
+
+
+
+if __name__ == '__main__':
+    main()
