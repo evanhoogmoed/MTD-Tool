@@ -112,26 +112,16 @@ class NetworkGraph(object):
         return net_copy
 
 
-    def get_state(self,num_of_links,network):
-        bc_dict = nx.betweenness_centrality(network,weight='weight')
-        #get top num_of_links links from bc_dict
-        top_nodes = heapq.nlargest(5,bc_dict,key=bc_dict.get)
-        #add .0 to end of top_nodes
-        top_nodes = [float(node) for node in top_nodes]
-        #print(top_nodes)
+    #state is all the links and their betweenness centrality
+    def get_state(self,network):
+        edge_bc_dict = nx.edge_betweenness_centrality(network,weight='weight')
 
+        #change the dictionary into an array with format [src,dst,bc]
+        state = []
+        for key,value in edge_bc_dict.items():
+            state.append([key[0],key[1],value])
 
-        max_bc = max(bc_dict.values())
-        min_bc = min(bc_dict.values())
-        #take the difference 
-        bc_diff = max_bc - min_bc
-
-        #concat top_nodes and bc_diff
-        state = top_nodes + [bc_diff]
-        #create state dict
-        #print("State",state,type(state))
-
-
+        
         return state
     
     #calls the packet creator and collects the delays of all packets
@@ -157,13 +147,13 @@ class NetworkGraph(object):
         
        
 
-network = NetworkGraph()
+#network = NetworkGraph()
 
 #randomize_edges = network.randomize_link_weights(5,network.net)
 #print(GLOBAL.LINK_WEIGHT_SET)
-"""#get state of network 
-state = network.get_state(5,network.net)
-print(state)"""
+#get state of network 
+#state = network.get_state(network.net)
+#print(state)
 
 """#randomize network
 randomize_edges = network.randomize_link_weights(5,network.net)
@@ -172,8 +162,8 @@ rand_state = network.get_state(5,randomize_edges)
 print(rand_state)"""
 
 
-org_delay = network.delay(network.net)
+"""org_delay = network.delay(network.net)
 randomize_edges = network.randomize_link_weights(5,network.net)
 rand_delay = network.delay(randomize_edges)
 
-network.GenBoxPlot(org_delay,rand_delay,'randomize_edges')
+network.GenBoxPlot(org_delay,rand_delay,'randomize_edges')"""
