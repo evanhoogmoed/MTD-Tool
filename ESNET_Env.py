@@ -25,12 +25,19 @@ class NetworkGraph(object):
     def __init__(self):
         self.net = None
         self.nodeSets = None
+        self.flow = None
 
         self.init_graph()
     
     def init_graph(self):
         self.net = self.EsnetGraph()
         self.nodeSets = self.SourceAndDestNode()
+        
+        #find the path between nodes 2 and 10
+        self.flow = nx.shortest_path(self.net,source=2,target=10,weight='weight')
+        print("Flow",self.flow)
+        
+
   
     #Constructs a networkx graph of 15 nodes from a sample of the ESNET network
     def EsnetGraph(self):

@@ -1,13 +1,15 @@
 import gym
 from gym import spaces 
 import numpy as np
-from StaticCaseEnv2 import NetworkGraph
+from ESNET_Env import NetworkGraph
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import logging
 import os
 from stable_baselines3 import PPO
 from stable_baselines3 import A2C
 import matplotlib.pyplot as plt
+import time
 
 class EdgeEnv(gym.Env):
     def __init__(self):
@@ -52,29 +54,25 @@ class EdgeEnv(gym.Env):
         prev_top_links = sorted(prev_bc_links, key=lambda x: x[2], reverse=True)[:5]
         curr_top_links = sorted(curr_bc_links, key=lambda x: x[2], reverse=True)[:5]
 
+        #drop the bc value from the list
+        prev_top_links = [x[:2] for x in prev_top_links]
+        curr_top_links = [x[:2] for x in curr_top_links]
+
         #if the src,dst pair is in the top 5 of both lists, then reward -=10
         for link in prev_top_links:
             if link in curr_top_links:
                 reward -= 10
-            else:
-                reward += 5
-        
-        #get the max and min bc values from prev_bc_links and take the difference
-        prev_max_bc = max(prev_bc_links, key=lambda x: x[2])
-        prev_min_bc = min(prev_bc_links, key=lambda x: x[2])
-        prev_bc_diff = prev_max_bc[2] - prev_min_bc[2]
 
-        #do the same for curr_bc_links
-        curr_max_bc = max(curr_bc_links, key=lambda x: x[2])
-        curr_min_bc = min(curr_bc_links, key=lambda x: x[2])
-        curr_bc_diff = curr_max_bc[2] - curr_min_bc[2]
-
-        #if the difference between the max and min bc values decreased, reward += 5
-        if curr_bc_diff < prev_bc_diff:
-            reward += 5
+        #if all links were changed, this is our optimal solution so reward heavily
+        if reward == 0:
+            reward += 10000
+        #if none of the links were changed, this is our worst solution so penalize heavily
+        elif reward == -50:
+            reward -= 10000
         else:
-            reward -= 5
-
+            #if some links were changed, reward based on the number of links changed
+            reward += 50
+       
         self.simTime -= 1
 
         info = {'delay': self.net.delay(self.net.net)}
@@ -141,16 +139,12 @@ def main():
    
 
     log_path = os.path.join('Training', 'Logs')
-    #model = PPO("MlpPolicy", edge_env,n_epochs=10, learning_rate= .003, verbose=1, tensorboard_log=log_path,ent_coef=0.05)
-    #edge_env = gym.wrappers.FlattenObservation(edge_env)
-    model = A2C("MlpPolicy", edge_env, verbose=1, tensorboard_log=log_path, device = 'cpu')
+    #batch size is determined because it needs to be a factor of n_steps * n_envs which is 2048. n_Steps = 2048 and n_Envs = 1
+    model = PPO("MlpPolicy", edge_env, batch_size = 128,verbose=1, tensorboard_log=log_path, device = 'cpu')
     model.learn(total_timesteps=500000)
-    model.save("a2c_bc_diff_edge15_500k")
+    name = "ppo_1edge_500k_" + time.strftime("%m%d-%H%M")
+    model.save(name)
     
-
-
-
-
 
 if __name__ == '__main__':
     main()
