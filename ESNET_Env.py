@@ -32,10 +32,9 @@ class NetworkGraph(object):
     def init_graph(self):
         self.net = self.EsnetGraph()
         self.nodeSets = self.SourceAndDestNode()
-        
         #find the path between nodes 2 and 10
         self.flow = nx.shortest_path(self.net,source=2,target=10,weight='weight')
-        print("Flow",self.flow)
+
         
 
   
