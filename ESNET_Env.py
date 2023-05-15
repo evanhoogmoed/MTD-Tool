@@ -118,15 +118,12 @@ class NetworkGraph(object):
         return net_copy
 
 
-    #state is all the links and their betweenness centrality
+    #state is all the links and their weights
     def get_state(self,network):
-        edge_bc_dict = nx.edge_betweenness_centrality(network,weight='weight')
-
-        #change the dictionary into an array with format [src,dst,bc]
         state = []
-        for key,value in edge_bc_dict.items():
-            state.append([key[0],key[1],value])
-
+        #get link weight and store in state as node1,node2,weight
+        for link in network.edges:
+            state.append([link[0],link[1],network.edges[link]['weight']])
         
         return state
     

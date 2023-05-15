@@ -10,6 +10,7 @@ from stable_baselines3 import PPO
 from stable_baselines3 import A2C
 import matplotlib.pyplot as plt
 import time
+import networkx as nx
 
 class EdgeEnv(gym.Env):
     def __init__(self):
@@ -41,46 +42,29 @@ class EdgeEnv(gym.Env):
         else:
             self.episode_over = False
  
-        #betweeness centrality reward
-        prev_bc_links = self.net.get_state(self.net.net)
+        new_net = self.take_action(action)
+        curr_state = self.net.get_state(new_net)
 
-        network_copy = self.net.net.copy()
-        new_net = self.net.randomize_link_weights(self.num_change_edges,network_copy)
+        prev_state = self.net.get_state(self.net.net)
 
-        curr_bc_links = self.net.get_state(new_net)
+        #find the shortest path in prev_state network for all nodes
+        prev_shortest_paths = []
+        for i in range(0,len(prev_state)):
+            prev_shortest_paths.append(nx.dijkstra_path(self.net.net,prev_state[i][0],prev_state[i][1]))
+        
+        #find the shortest path in curr_state network for all nodes
+        curr_shortest_paths = []
+        for i in range(0,len(curr_state)):
+            curr_shortest_paths.append(nx.dijkstra_path(new_net,curr_state[i][0],curr_state[i][1]))
 
-        reward = 0
+        print("prev shortest paths: ",prev_shortest_paths)
+        print("curr shortest paths: ",curr_shortest_paths)
 
-        #get top 5 src,dst pairs from prev_bc_links based on bc value
-        prev_top_links = sorted(prev_bc_links, key=lambda x: x[2], reverse=True)[:5]
-        curr_top_links = sorted(curr_bc_links, key=lambda x: x[2], reverse=True)[:5]
-
-        #drop the bc value from the list
-        prev_top_links = [x[:2] for x in prev_top_links]
-        curr_top_links = [x[:2] for x in curr_top_links]
-
-        #if the src,dst pair is in the top 5 of both lists, then reward -=10
-        for link in prev_top_links:
-            if link in curr_top_links:
-                reward -= 10
-
-        #if all links were changed, this is our optimal solution so reward heavily
-        if reward == 0:
-            reward += 10000
-        #if none of the links were changed, this is our worst solution so penalize heavily
-        elif reward == -50:
-            reward -= 10000
-        else:
-            #if some links were changed, reward based on the number of links changed
-            reward += 50
-       
 
         #reward for special flow
 
         prev_flow = self.get_flow_weight(self.net.net)
-        print("Prev flow",prev_flow)
         curr_flow = self.get_flow_weight(new_net)
-        print("Curr flow",curr_flow)
 
         if curr_flow == prev_flow:
             reward += 100000
@@ -90,7 +74,7 @@ class EdgeEnv(gym.Env):
         self.simTime -= 1
 
         info = {'delay': self.net.delay(self.net.net)}
-        return np.array(curr_bc_links,dtype=np.float32), reward, self.episode_over,info
+        return np.array(curr_state,dtype=np.float32), reward, self.episode_over,info
 
     def get_flow_weight(self,network):
         #get weight of path of net.net.flow
@@ -165,7 +149,7 @@ def main():
     #batch size is determined because it needs to be a factor of n_steps * n_envs which is 2048. n_Steps = 2048 and n_Envs = 1
     model = PPO("MlpPolicy", edge_env, batch_size = 128,verbose=1, tensorboard_log=log_path, device = 'cpu')
     model.learn(total_timesteps=500000)
-    name = "ppo_1edge_500k_" + time.strftime("%m%d-%H%M")
+    name = "ppo_1edge_flow_500k_" + time.strftime("%m%d-%H%M")
     model.save(name)"""
     
 
