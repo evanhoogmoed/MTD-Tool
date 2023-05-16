@@ -8,37 +8,47 @@ import os
 import networkx as nx
 import pandas as pd 
 import time
+import matplotlib.pyplot as plt
 pd.options.mode.chained_assignment = None
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.monitor import Monitor
 
 class GLOBAL:
     LINK_WEIGHT_SET = []
+    LINK_DICT = {}
+    
 
 class FlowEnv(Env):
     def __init__(self):
         self.network = self.EsnetGraph()
-        self.flow = nx.shortest_path(self.network,source=2,target=10,weight='weight')
+        self.flow = nx.shortest_path(self.network,source=2,target=8,weight='weight')
 
-        self.action_space = Discrete(15)  #number of links to change
+
+        self.action_space = Box(low=0,high=17,shape=(14,))  #each number corresponds to a link to change [9 7 11]
         self.observation_space = Box(low=0, high=100, shape=(15,15)) #to_numpy_array(network) adjacency matrix
-        self.state = 40 + random.randint(-3,3) #initial flow rate should be 40
+        self.state = 70 + random.randint(-3,3) #initial flow rate should be 70
         self.episode_length = 60 #episode length
 
     def step(self, action):
         #randomize the link weights
         self.network = self.randomize_link_weights(action,self.network)
-
+        obs = nx.to_numpy_array(self.network, dtype=np.float32)
         self.state = self.get_flow_weight(self.network) 
         self.episode_length -= 1
 
-        if self.state >= 39 and self.state <= 41:
-            reward = 1
+        #if flow rate is 70, reward is 100 since it is our optimal flow rate
+        if self.state == 70:
+            reward = 1000
+
+        #else for every 1 unit away from 70 subtract 10 from the reward
         else:
-            reward = -1
+            reward = 100 - abs(70-self.state)
+
+
         
         if self.episode_length <= 0:
             done = True
@@ -47,12 +57,15 @@ class FlowEnv(Env):
         
         info = {}
 
-        return self.state, reward, done, info
+        return obs, float(reward), done, info
 
     def reset(self):
-        self.state = np.array(40, dtype=np.int32)
+        self.state = np.array(70 + random.randint(-3,3))
         self.episode_length = 60
-        return self.state
+        network = self.EsnetGraph()
+        obs = nx.to_numpy_array(network, dtype=np.float32)
+
+        return obs
 
     def render(self):
         pass
@@ -89,31 +102,44 @@ class FlowEnv(Env):
         for index in range(len(connections_df['source'])):
             esNet.add_edge(connections_df['source'][index],connections_df['target'][index],weight=connections_df['weight'][index])
         
+        #for every pair in esNet.edges() add to dictionary with key as int and value as tuple
+        for index in range(len(esNet.edges())):
+            GLOBAL.LINK_DICT[index] = list(esNet.edges())[index]
+
+
         return esNet
     
     def get_flow_weight(self,network):
         #get weight of path of net.net.flow
-        path = self.flow
+        path = nx.shortest_path(self.network,source=2,target=8,weight='weight')
+
         total_weight = 0
         for i in range(0,len(path)-1):
             total_weight += network[path[i]][path[i+1]]['weight']
+    
         return total_weight
     
-    def randomize_link_weights(self,num_of_links,network):
+    def randomize_link_weights(self,action,network):
         net_copy = network.copy()
 
-        for i in range(num_of_links):
-            random_link = random.choice(list(net_copy.edges))
-            net_copy.edges[random_link]['weight'] = random.choice(GLOBAL.LINK_WEIGHT_SET)
+
+        for i in action:
+            #round i to nearest int
+            i = int(round(i))
+            #look up i in dictionary to get the link
+            change_link = GLOBAL.LINK_DICT[i]
+            #change the weight of the link
+            net_copy.edges[change_link]['weight'] = random.choice(GLOBAL.LINK_WEIGHT_SET)
             
             #check if link weight changed
-            #print(network.edges[random_link]['weight'],net_copy.edges[random_link]['weight'])
+            #print(network.edges[change_link]['weight'],net_copy.edges[change_link]['weight'])
 
         return net_copy
     
 
 
 env = FlowEnv()
+#check_env(env, warn=True)
 
 """episodes = 5
 for episode in range(1, episodes+1):
@@ -126,9 +152,20 @@ for episode in range(1, episodes+1):
         obs, reward, done, info = env.step(action)
         score += reward
     print('Episode:{} Score:{}'.format(episode, score))"""
-
 log_path = os.path.join('Training', 'Logs')
-model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=log_path)
-model.learn(total_timesteps=1000000)
-name = "ppo_15edge_flow_1M_" + time.strftime("%m%d-%H%M")
+env = Monitor(env, log_path, allow_early_resets=True)
+env = DummyVecEnv([lambda: env])
+env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0)
+
+
+
+model = PPO('MlpPolicy', env, verbose=1, ent_coef=0.001, tensorboard_log=log_path)
+model.learn(total_timesteps=100000)
+name = "ppo_14edge_flow_001entropy_100k_" + time.strftime("%m%d-%H%M")
 model.save(name)
+
+"""nx.draw(env.network, with_labels=True)
+plt.show()
+
+for u, v, w in env.network.edges(data='weight'):
+    print(f"Edge ({u}, {v}) has weight: {w}")"""
