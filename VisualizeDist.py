@@ -21,6 +21,23 @@ def GenPackets():
         packets.append(Packet(i,src,dst,0,[]))
     return packets
 
+def arbitrary_randomization(network):
+    #randomize all links
+    for link in network.edges:
+        network.edges[link]['weight'] = random.randint(0,50)
+    return network
+    
+def bc_links(network):
+    #get top 5 betweenness centrality links
+    bc_links = nx.edge_betweenness_centrality(network,weight='weight')
+    bc_links = sorted(bc_links.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    #write bc_links as an array of arrays with format [source,target]
+    for i in range(len(bc_links)):
+        bc_links[i] = [bc_links[i][0][0],bc_links[i][0][1]]
+
+    return bc_links 
+
 def Get_delay(network,packets):
     all_delays = []
     for packet in packets:
@@ -31,11 +48,11 @@ def Get_delay(network,packets):
         all_delays.append(delay)
     return all_delays
 
-def GenBoxPlot(org_delay,rand_delay,A2C_delay):
+def GenBoxPlot(org_delay,rand_delay,PPO_delay):
     fig = plt.figure()
     fig.suptitle('Packet Delay Distribution')
-    plt.boxplot([org_delay,rand_delay,A2C_delay])
-    plt.xticks([1,2,3],['Org','Random','A2C'])
+    plt.boxplot([org_delay,rand_delay,PPO_delay])
+    plt.xticks([1,2,3],['Org','Random','PPO'])
     plt.ylim([-5,300])
     plt.grid()
     plt.show()
@@ -54,43 +71,37 @@ def main():
 
     #get delay of packets on orginal network
     org_delay = Get_delay(org_network,packets)
-    print(org_delay)
-"""
-    org_delay = edge_env.net.delay(edge_env.net.nodeSets,edge_env.net.net)
 
-    #create random delay
-    print("Creating random delay")
-    random_delay = edge_env.net.delay(edge_env.net.nodeSets,edge_env.net.randomize_link_weights(2,edge_env.net.net))
 
+    #get top5 bc links
+    bc_links_org = bc_links(org_network)
+    print("org bc_links: ",bc_links_org)
+    
+    #randomize one link aritrarily
+    rand_network = arbitrary_randomization(org_network)
+    rand_delay = Get_delay(rand_network,packets)
+
+    #get top5 bc links
+    bc_links_rand = bc_links(rand_network)
+    print("rand bc_links: ",bc_links_rand)
+
+    #get the best network graph from model
     obs = edge_env.reset()
     delay = []
-    random = []
-    print("Creating A2C delay")
     for i in range(100):
         action, _states = model.predict(obs, deterministic=True)
         obs, rewards, done, info = edge_env.step(action)
-        delay.append(info['delay'])
-        #random.append(info['random_delay'])
-
-    #flatten delay
-    delay = np.array(delay, dtype=object)
-    if delay.any():
-        delay = np.hstack(delay)
-    else:
-        delay = delay.flatten()
-
-    #flatten random
-    random = np.array(random, dtype=object)
-    if random.any():
-        random = np.hstack(random)
-    else:
-        random = random.flatten()
-
-    org_delay = np.array(org_delay, dtype=object)
     
-    print("Creating boxplot")
-    #create boxplot of delay
-    GenBoxPlot(org_delay,random_delay,delay)"""
+   
+    #convert obs to networkx graph
+    PPO_network = nx.from_numpy_matrix(obs)
+    PPO_delay = Get_delay(PPO_network,packets)
+
+    #get top5 bc links
+    bc_links_ppo = bc_links(PPO_network)
+    print("PPO bc_links: ",bc_links_ppo)
+
+    GenBoxPlot(org_delay,rand_delay,PPO_delay)
 
 
 if __name__ == "__main__":
