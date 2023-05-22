@@ -22,16 +22,18 @@ class BcEnv(Env):
     def __init__(self):
         self.network = self.EsnetGraph()
 
-        self.action_space = Discrete(10)  #how much to increase the weight of the link by
-        self.observation_space = Box(low=0, high=50, shape=(15,15)) #to_numpy_array(network) adjacency matrix 
+        self.action_space = Discrete(10)  #how much to increase the weight of the link by 0-10
+        self.observation_space = Box(low=0, high=50, shape=(15,15)) #adjacency matrix of the network with weights
 
         self.state = self.bc_links() #top 5 betweenness centrality links
-        self.episode_length = 60 #episode length
+        self.episode_length = 60 
 
     def step(self, action):
         prev_bc_links = self.state
-        #randomize the link weights
+        
         self.network = self.randomize_link_weights(action,self.network)
+
+        #get top bc links from new network 
         self.state = self.bc_links()
 
         self.episode_length -= 1
@@ -50,7 +52,7 @@ class BcEnv(Env):
         if reward == 5:
             reward = 100
 
-        #the higher the action the lower the reward
+        #have a higher reward for minimal link weight changes and a lower reward for higher link weight changes
         reward -= action * 10 
             
         
@@ -61,11 +63,13 @@ class BcEnv(Env):
         
         info = {}
 
+        #get adjacency matrix of new network to set as observation
         obs = nx.to_numpy_array(self.network, dtype=np.float32)
 
         return obs, reward, done, info
 
     def reset(self):
+        #reset network to original state
         self.network = self.EsnetGraph()
         self.state = self.bc_links()
         obs = nx.to_numpy_array(self.network, dtype=np.float32)
@@ -75,7 +79,9 @@ class BcEnv(Env):
     def render(self):
         pass
 
+    #construct the network using ESNET data
     def EsnetGraph(self):
+        #connections2 is a reduced set of the ESNET network
         connections_df = pd.read_csv('connections2.csv')
 
         #create dictionary so each unique node name is paired with unique int ex. 'SEAT':0
@@ -104,11 +110,11 @@ class BcEnv(Env):
         return esNet
     
     def bc_links(self):
+        #get top 5 betweenness centrality links
         bc_links = nx.edge_betweenness_centrality(self.network,weight='weight')
-        #sort bc_links and get top 5 
         bc_links = sorted(bc_links.items(), key=lambda x: x[1], reverse=True)[:5]
         
-        #write bc_links as an array of arrays with format [source,target
+        #write bc_links as an array of arrays with format [source,target]
         for i in range(len(bc_links)):
             bc_links[i] = [bc_links[i][0][0],bc_links[i][0][1]]
 
@@ -121,9 +127,7 @@ class BcEnv(Env):
         bc_links = self.bc_links()
 
         #find first link in bc_links whose weight is < 50:
-
         for link in bc_links:
-            #print("Weight",network.edges[link]['weight'])
             if network.edges[link]['weight'] < 50:
                 random_link = link
                 break
@@ -133,20 +137,22 @@ class BcEnv(Env):
         #Increase random_link weight by action
         net_copy.edges[random_link]['weight'] += action
 
-        #if weight exceeds 50, set weight to 50
+        #do not allow link weight to exceed maximum link weight of org network
         if net_copy.edges[random_link]['weight'] > 50:
             net_copy.edges[random_link]['weight'] = 50
 
 
-        #print(network.edges[random_link]['weight'],net_copy.edges[random_link]['weight'])
 
         return net_copy
 
 env = BcEnv()
 
+#used to ensure gym enviornment is compatible with stable baselines
 check_env(env, warn=True)
-    
-"""episodes = 5
+
+#Uncomment the following section to test changes to the enviornment prior to training    
+"""
+episodes = 5
 for episode in range(1, episodes+1):
     obs = env.reset()
     done = False
@@ -159,9 +165,9 @@ for episode in range(1, episodes+1):
     print('Episode:{} Score:{}'.format(episode, score))"""
 
 log_path = os.path.join('Training', 'Logs')
-model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=log_path)
-model.learn(total_timesteps=2000000)
-name = "ppo_2M_" + time.strftime("%m%d-%H%M")
+model = PPO('MlpPolicy', env,ent_coef=.01 ,verbose=1, tensorboard_log=log_path)
+model.learn(total_timesteps=200000)
+name = "ppo_200k_entropy01" + time.strftime("%m%d-%H%M")
 model.save(name)
 
 
