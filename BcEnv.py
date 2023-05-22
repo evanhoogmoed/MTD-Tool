@@ -145,30 +145,37 @@ class BcEnv(Env):
 
         return net_copy
 
-env = BcEnv()
 
-#used to ensure gym enviornment is compatible with stable baselines
-check_env(env, warn=True)
 
-#Uncomment the following section to test changes to the enviornment prior to training    
-"""
-episodes = 5
-for episode in range(1, episodes+1):
-    obs = env.reset()
-    done = False
-    score = 0
+def main():
+    env = BcEnv()
 
-    while not done:
-        action = env.action_space.sample()
-        obs, reward, done, info = env.step(action)
-        score += reward
-    print('Episode:{} Score:{}'.format(episode, score))"""
+    #used to ensure gym enviornment is compatible with stable baselines
+    check_env(env, warn=True)
 
-log_path = os.path.join('Training', 'Logs')
-model = PPO('MlpPolicy', env,ent_coef=.01 ,verbose=1, tensorboard_log=log_path)
-model.learn(total_timesteps=200000)
-name = "ppo_200k_entropy01" + time.strftime("%m%d-%H%M")
-model.save(name)
+    #Uncomment the following section to test changes to the enviornment prior to training    
+    """
+    episodes = 5
+    for episode in range(1, episodes+1):
+        obs = env.reset()
+        done = False
+        score = 0
+
+        while not done:
+            action = env.action_space.sample()
+            obs, reward, done, info = env.step(action)
+            score += reward
+        print('Episode:{} Score:{}'.format(episode, score))"""
+
+    log_path = os.path.join('Training', 'Logs')
+    model = PPO('MlpPolicy', env,ent_coef=.01 ,verbose=1, tensorboard_log=log_path)
+    model.learn(total_timesteps=500000)
+    name = "ppo_500k_entropy01"
+    model.save(name)
+
+
+if __name__ == '__main__':
+    main()
 
 
 
