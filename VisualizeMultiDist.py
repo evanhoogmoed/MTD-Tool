@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from BcEnv import *
+import statistics
 
 
 class Packet:
@@ -49,13 +50,32 @@ def Get_delay(network,packets):
     return all_delays
 
 def GenBoxPlot(org_delay,rand_delay,PPO_delay):
-    fig = plt.figure()
-    fig.suptitle('Packet Delay Distribution')
-    plt.boxplot([org_delay,rand_delay,PPO_delay])
-    plt.xticks([1,2,3],['Org','Random','PPO'])
-    plt.ylim([-5,300])
-    plt.grid()
+    fig,ax = plt.subplots()
+    ax.set_title('Packet Delay Distribution')
+    ax.axhline(org_delay, color='r')
+    ax.boxplot([rand_delay,PPO_delay])
+    ax.set_xticklabels(['Random','PPO'])
+    ax.set_ylim([-5,200])
+    ax.grid()
+    ax.legend(['Org Network Avg Delay'])
     plt.show()
+    fig, ax = plt.subplots()
+
+    """# Plot the boxplot
+    ax.boxplot(data)
+
+    # Plot the horizontal line
+    ax.axhline(y=line_value, color='r', linestyle='--')
+
+    # Customize the plot
+    ax.set_xticklabels(['Box 1', 'Box 2', 'Box 3'])
+    ax.set_xlabel('Box')
+    ax.set_ylabel('Value')
+    ax.set_title('Boxplot with Horizontal Line')
+    ax.legend(['Horizontal Line'])
+
+    # Show the plot
+    plt.show()"""
 
 def main():
     #Load the model
@@ -73,6 +93,7 @@ def main():
     org_delay = Get_delay(org_network,packets)
 
     #get the average delay of the orginal network
+    org_delay_avg = sum(org_delay)/len(org_delay)
     print("org delay average: ",sum(org_delay)/len(org_delay))
 
 
@@ -83,7 +104,7 @@ def main():
     #randomize one link aritrarily
     random_delay = []
     bc_links_rand = []
-    for i in range(50):
+    for i in range(100):
         rand_network = arbitrary_randomization(org_network)
         rand_delay = Get_delay(rand_network,packets)
         random_delay.append(sum(rand_delay)/len(rand_delay))
@@ -91,26 +112,29 @@ def main():
         #count how many bc links match the orginal network
         count = 0
         for link in bc_links_org:
-            if link in bc_links(rand_network):
+            if link not in bc_links(rand_network):
                 count += 1
         bc_links_rand.append(count)
 
-    
+    print("rand bc_links: ",bc_links_rand)
+   
 
-    #get top5 bc links
-    #bc_links_rand = bc_links(rand_network)
-    #print("rand bc_links: ",bc_links_rand)
+    print("rand bc_links Mode: ",statistics.mode(bc_links_rand))
+    print("rand bc_links Avg: ",sum(bc_links_rand)/len(bc_links_rand))
+  
 
     #get the best network graph from model
     obs = edge_env.reset()
     PPO_delays = []
     PPO_count = []
-    for i in range(50):
-        action, _states = model.predict(obs, deterministic=True)
-        obs, rewards, done, info = edge_env.step(action)
+    for i in range(100):
+        for i in range(50):
+            action, _states = model.predict(obs, deterministic=True)
+            obs, rewards, done, info = edge_env.step(action)
     
    
-        #convert obs to networkx graph
+    #convert obs to networkx graph
+ 
         PPO_network = nx.from_numpy_matrix(obs)
         PPO_delay = Get_delay(PPO_network,packets)
         PPO_delays.append(sum(PPO_delay)/len(PPO_delay))
@@ -118,15 +142,16 @@ def main():
         #count how many bc links match the orginal network
         count = 0
         for link in bc_links_org:
-            if link in bc_links(PPO_network):
+            if link not in bc_links(PPO_network):
                 count += 1
         PPO_count.append(count)
+    print("PPO bc_links: ",PPO_count)
 
-    #get top5 bc links
-    #bc_links_ppo = bc_links(PPO_network)
-    #print("PPO bc_links: ",bc_links_ppo)
+    #print the mode
+    print("PPO bc_links Mode: ",statistics.mode(PPO_count))
+    print("PPO bc_links Avg: ",sum(PPO_count)/len(PPO_count))
 
-    GenBoxPlot(org_delay,rand_delay,PPO_delay)
+    GenBoxPlot(org_delay_avg,rand_delay,PPO_delay)
 
 
 if __name__ == "__main__":
