@@ -23,9 +23,9 @@ def GenPackets():
     return packets
 
 def arbitrary_randomization(network):
-    #randomize all links
-    for link in network.edges:
-        network.edges[link]['weight'] = random.randint(0,50)
+    #randomize one link aritrarily
+    link = random.choice(list(network.edges))
+    network.edges[link]['weight'] = random.randint(10,50)
     return network
     
 def bc_links(network):
@@ -50,16 +50,13 @@ def Get_delay(network,packets):
     return all_delays
 
 def GenBoxPlot(org_delay,rand_delay,PPO_delay):
-    fig,ax = plt.subplots()
-    ax.set_title('Packet Delay Distribution')
-    ax.axhline(org_delay, color='r')
-    ax.boxplot([rand_delay,PPO_delay])
-    ax.set_xticklabels(['Random','PPO'])
-    ax.set_ylim([-5,200])
-    ax.grid()
-    ax.legend(['Org Network Avg Delay'])
+    fig = plt.figure()
+    fig.suptitle('Packet Delay Distribution')
+    plt.boxplot([org_delay,rand_delay,PPO_delay])
+    plt.xticks([1,2,3],['Org','Random','PPO'])
+    plt.ylim([-5,300])
+    plt.grid()
     plt.show()
-    fig, ax = plt.subplots()
 
     """# Plot the boxplot
     ax.boxplot(data)
@@ -79,12 +76,23 @@ def GenBoxPlot(org_delay,rand_delay,PPO_delay):
 
 def main():
     #Load the model
-    model = PPO.load("models/ppo_500k_entropy01")
+    model = PPO.load("ppo_200k_link1")
     edge_env = BcEnv()
+
 
 
     #begin with the orginal network
     org_network = BcEnv().network
+
+    flow =  nx.shortest_path(org_network,2,8)
+
+    #sum weight of flow path
+    org_flow_sum = 0
+    for i in range(len(flow)-1):
+        org_flow_sum += org_network[flow[i]][flow[i+1]]['weight']
+    print("flow weight sum: ",org_flow_sum)
+
+
 
     #create packets
     packets = GenPackets()
@@ -92,9 +100,6 @@ def main():
     #get delay of packets on orginal network
     org_delay = Get_delay(org_network,packets)
 
-    #get the average delay of the orginal network
-    org_delay_avg = sum(org_delay)/len(org_delay)
-    print("org delay average: ",sum(org_delay)/len(org_delay))
 
 
     #get top5 bc links
@@ -104,6 +109,7 @@ def main():
     #randomize one link aritrarily
     random_delay = []
     bc_links_rand = []
+    flow_rand = []
     for i in range(100):
         rand_network = arbitrary_randomization(org_network)
         rand_delay = Get_delay(rand_network,packets)
@@ -116,8 +122,22 @@ def main():
                 count += 1
         bc_links_rand.append(count)
 
+        #get flow weight
+        flow =  nx.shortest_path(rand_network,2,8)
+        flow_sum = 0
+        for i in range(len(flow)-1):
+            flow_sum += rand_network[flow[i]][flow[i+1]]['weight']
+        flow_rand.append(flow_sum)
+
     print("rand bc_links: ",bc_links_rand)
-   
+    
+    #get average of flows
+    rand_flow_avg = sum(flow_rand)/len(flow_rand)
+    print("rand flow avg: ",rand_flow_avg)
+    #print difference from average and flow
+    print("rand flow avg diff: ",org_flow_sum - rand_flow_avg)
+
+
 
     print("rand bc_links Mode: ",statistics.mode(bc_links_rand))
     print("rand bc_links Avg: ",sum(bc_links_rand)/len(bc_links_rand))
@@ -127,6 +147,7 @@ def main():
     obs = edge_env.reset()
     PPO_delays = []
     PPO_count = []
+    PPO_flow = []
     for i in range(100):
         for i in range(50):
             action, _states = model.predict(obs, deterministic=True)
@@ -145,13 +166,26 @@ def main():
             if link not in bc_links(PPO_network):
                 count += 1
         PPO_count.append(count)
+
+        #get flow weight
+        flow =  nx.shortest_path(PPO_network,2,8)
+        flow_sum = 0
+        for i in range(len(flow)-1):
+            flow_sum += PPO_network[flow[i]][flow[i+1]]['weight']
+        PPO_flow.append(flow_sum)
+
+    #get average of flows
+    PPO_flow_avg = sum(PPO_flow)/len(PPO_flow)
+    #print difference from average and flow
+    print("PPO flow avg: ",PPO_flow_avg)
+    print("PPO flow avg diff: ",org_flow_sum - PPO_flow_avg)
     print("PPO bc_links: ",PPO_count)
 
     #print the mode
     print("PPO bc_links Mode: ",statistics.mode(PPO_count))
     print("PPO bc_links Avg: ",sum(PPO_count)/len(PPO_count))
 
-    GenBoxPlot(org_delay_avg,rand_delay,PPO_delay)
+    GenBoxPlot(org_delay,rand_delay,PPO_delay)
 
 
 if __name__ == "__main__":
