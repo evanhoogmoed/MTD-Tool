@@ -26,12 +26,12 @@ class BcEnv(Env):
         self.observation_space = Box(low=0, high=50, shape=(15,15)) #adjacency matrix of the network with weights
 
         self.state = self.bc_links() #top 5 betweenness centrality links
-        self.episode_length = 60 
+        self.episode_length = 1
 
     def step(self, action):
         prev_bc_links = self.state
         
-        self.network = self.randomize_link_weights(action,self.network)
+        new_network = self.randomize_link_weights(action,self.network)
 
         #get top bc links from new network 
         self.state = self.bc_links()
@@ -64,7 +64,7 @@ class BcEnv(Env):
         info = {}
 
         #get adjacency matrix of new network to set as observation
-        obs = nx.to_numpy_array(self.network, dtype=np.float32)
+        obs = nx.to_numpy_array(new_network, dtype=np.float32)
 
         return obs, reward, done, info
 
@@ -73,7 +73,7 @@ class BcEnv(Env):
         self.network = self.EsnetGraph()
         self.state = self.bc_links()
         obs = nx.to_numpy_array(self.network, dtype=np.float32)
-        self.episode_length = 60
+        self.episode_length = 1
         return obs
 
     def render(self):
@@ -122,7 +122,7 @@ class BcEnv(Env):
     
     def randomize_link_weights(self,action,network):
         net_copy = network.copy()
-        
+        #print(net_copy.edges.data())
         #get top bc links
         bc_links = self.bc_links()
 
@@ -141,6 +141,8 @@ class BcEnv(Env):
         if net_copy.edges[random_link]['weight'] > 50:
             net_copy.edges[random_link]['weight'] = 50
 
+        #print(net_copy.edges.data())
+
 
 
         return net_copy
@@ -154,23 +156,27 @@ def main():
     check_env(env, warn=True)
 
     #Uncomment the following section to test changes to the enviornment prior to training    
-    """
-    episodes = 5
+    """episodes = 2
     for episode in range(1, episodes+1):
         obs = env.reset()
         done = False
         score = 0
+        PPO_network = nx.from_numpy_matrix(obs)
+        print(PPO_network.edges.data('weight'))
+
 
         while not done:
             action = env.action_space.sample()
             obs, reward, done, info = env.step(action)
+            PPO_network = nx.from_numpy_matrix(obs)
             score += reward
+        print(PPO_network.edges.data('weight'))
         print('Episode:{} Score:{}'.format(episode, score))"""
 
     log_path = os.path.join('Training', 'Logs')
-    model = PPO('MlpPolicy', env,ent_coef=.01 ,verbose=1, tensorboard_log=log_path)
+    model = PPO('MlpPolicy', env,verbose=1, tensorboard_log=log_path)
     model.learn(total_timesteps=500000)
-    name = "ppo_500k_entropy01"
+    name = "ppo_500k_link1_bc"
     model.save(name)
 
 
