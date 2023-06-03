@@ -3,29 +3,11 @@ from BcEnv import *
 import statistics
 
 
-class Packet:
-    def __init__(self, id, src, dst, delay, path):
-        self.id = id
-        self.src = src 
-        self.dst = dst 
-        self.delay = delay
-        self.path = path
-
-def GenPackets():
-    packets = []
-    for i in range(100):
-        src = random.randint(0,14)
-        dst = random.randint(0,14)
-        while dst == src:
-            dst = random.randint(0,14)
-
-        packets.append(Packet(i,src,dst,0,[]))
-    return packets
 
 def arbitrary_randomization(network):
     #randomize one link aritrarily
     link = random.choice(list(network.edges))
-    network.edges[link]['weight'] = random.randint(10,50)
+    network.edges[link]['weight'] += random.randint(0,10)
     return network
     
 def bc_links(network):
@@ -39,68 +21,14 @@ def bc_links(network):
 
     return bc_links 
 
-def Get_delay(network,packets):
-    all_delays = []
-    for packet in packets:
-        path = nx.shortest_path(network,packet.src,packet.dst)
-        delay = 0
-        for i in range(len(path)-1):
-            delay += network[path[i]][path[i+1]]['weight']
-        all_delays.append(delay)
-    return all_delays
-
-def GenBoxPlot(org_delay,rand_delay,PPO_delay):
-    fig = plt.figure()
-    fig.suptitle('Packet Delay Distribution')
-    plt.boxplot([org_delay,rand_delay,PPO_delay])
-    plt.xticks([1,2,3],['Org','Random','PPO'])
-    plt.ylim([-5,300])
-    plt.grid()
-    plt.show()
-
-    """# Plot the boxplot
-    ax.boxplot(data)
-
-    # Plot the horizontal line
-    ax.axhline(y=line_value, color='r', linestyle='--')
-
-    # Customize the plot
-    ax.set_xticklabels(['Box 1', 'Box 2', 'Box 3'])
-    ax.set_xlabel('Box')
-    ax.set_ylabel('Value')
-    ax.set_title('Boxplot with Horizontal Line')
-    ax.legend(['Horizontal Line'])
-
-    # Show the plot
-    plt.show()"""
+    
 
 def main():
     #Load the model
-    model = PPO.load("ppo_200k_link1")
+    model = PPO.load("ppo_500k_link1_bc")
     edge_env = BcEnv()
-
-
-
     #begin with the orginal network
     org_network = BcEnv().network
-
-    flow =  nx.shortest_path(org_network,2,8)
-
-    #sum weight of flow path
-    org_flow_sum = 0
-    for i in range(len(flow)-1):
-        org_flow_sum += org_network[flow[i]][flow[i+1]]['weight']
-    print("flow weight sum: ",org_flow_sum)
-
-
-
-    #create packets
-    packets = GenPackets()
-
-    #get delay of packets on orginal network
-    org_delay = Get_delay(org_network,packets)
-
-
 
     #get top5 bc links
     bc_links_org = bc_links(org_network)
@@ -110,10 +38,8 @@ def main():
     random_delay = []
     bc_links_rand = []
     flow_rand = []
-    for i in range(100):
+    for i in range(500):
         rand_network = arbitrary_randomization(org_network)
-        rand_delay = Get_delay(rand_network,packets)
-        random_delay.append(sum(rand_delay)/len(rand_delay))
 
         #count how many bc links match the orginal network
         count = 0
@@ -122,43 +48,34 @@ def main():
                 count += 1
         bc_links_rand.append(count)
 
-        #get flow weight
-        flow =  nx.shortest_path(rand_network,2,8)
-        flow_sum = 0
-        for i in range(len(flow)-1):
-            flow_sum += rand_network[flow[i]][flow[i+1]]['weight']
-        flow_rand.append(flow_sum)
+
 
     print("rand bc_links: ",bc_links_rand)
     
-    #get average of flows
-    rand_flow_avg = sum(flow_rand)/len(flow_rand)
-    print("rand flow avg: ",rand_flow_avg)
-    #print difference from average and flow
-    print("rand flow avg diff: ",org_flow_sum - rand_flow_avg)
 
+    
+     #count the number of zeros, ones, twos, etc in bc_links_rand and store in dictionary
+    bc_links_rand_dict = {0:0,1:0,2:0,3:0,4:0,5:0}
+    for i in range(len(bc_links_rand)):
+        if bc_links_rand[i] in bc_links_rand_dict:
+            bc_links_rand_dict[bc_links_rand[i]] += 1
+    
+    print(bc_links_rand_dict)
 
-
-    print("rand bc_links Mode: ",statistics.mode(bc_links_rand))
-    print("rand bc_links Avg: ",sum(bc_links_rand)/len(bc_links_rand))
   
 
-    #get the best network graph from model
-    obs = edge_env.reset()
-    PPO_delays = []
+    #PPO model
     PPO_count = []
-    PPO_flow = []
-    for i in range(100):
-        for i in range(50):
-            action, _states = model.predict(obs, deterministic=True)
-            obs, rewards, done, info = edge_env.step(action)
+    for i in range(500):
+        obs = edge_env.reset()
+        action, _states = model.predict(obs, deterministic=True)
+        obs, rewards, done, info = edge_env.step(action)
     
    
-    #convert obs to networkx graph
+        #convert obs to networkx graph
  
         PPO_network = nx.from_numpy_matrix(obs)
-        PPO_delay = Get_delay(PPO_network,packets)
-        PPO_delays.append(sum(PPO_delay)/len(PPO_delay))
+        #print(PPO_network.edges.data('weight'))
 
         #count how many bc links match the orginal network
         count = 0
@@ -167,26 +84,26 @@ def main():
                 count += 1
         PPO_count.append(count)
 
-        #get flow weight
-        flow =  nx.shortest_path(PPO_network,2,8)
-        flow_sum = 0
-        for i in range(len(flow)-1):
-            flow_sum += PPO_network[flow[i]][flow[i+1]]['weight']
-        PPO_flow.append(flow_sum)
 
-    #get average of flows
-    PPO_flow_avg = sum(PPO_flow)/len(PPO_flow)
-    #print difference from average and flow
-    print("PPO flow avg: ",PPO_flow_avg)
-    print("PPO flow avg diff: ",org_flow_sum - PPO_flow_avg)
-    print("PPO bc_links: ",PPO_count)
+    #count the number of zeros, ones, twos, etc in PPO_count and store in dictionary
+    PPO_count_dict = {0:0,1:0,2:0,3:0,4:0,5:0}
+    for i in range(len(PPO_count)):
+        if PPO_count[i] in PPO_count_dict:
+            PPO_count_dict[PPO_count[i]] += 1
+    
+    print("PPO_count_dict: ",PPO_count_dict)
 
-    #print the mode
-    print("PPO bc_links Mode: ",statistics.mode(PPO_count))
-    print("PPO bc_links Avg: ",sum(PPO_count)/len(PPO_count))
 
-    GenBoxPlot(org_delay,rand_delay,PPO_delay)
-
+    X = np.arange(len(bc_links_rand_dict))
+    ax = plt.subplot(111)
+    ax.bar(X, bc_links_rand_dict.values(), width=0.2, color='#0F4392', align='center')
+    ax.bar(X-0.2, PPO_count_dict.values(), width=0.2, color='#FF4949', align='center')
+    ax.legend(('Random','PPO'))
+    ax.set_ylabel('Number of Networks') 
+    ax.set_xlabel('Number of BC links Changed')
+    plt.xticks(X, bc_links_rand_dict.keys())
+    plt.title("Change in BC links across 500 networks")
+    plt.show()
 
 if __name__ == "__main__":
     main()
